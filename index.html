@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-density="2">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Synchro — Google Tasks, UK/Poland Routines & AI Daily Planner</title>
+  <link rel="icon" type="image/png" href="./synchro-icon.png" />
+  <link rel="apple-touch-icon" href="./synchro-icon.png" />
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <!-- LOGIN GATE OVERLAY -->
+  <div id="login-modal" class="modal-backdrop hidden">
+    <div class="login-card">
+      <div class="login-brand">
+        <div class="brand-logo">
+          <img src="./synchro-icon.png" alt="Synchro" class="brand-icon-img" />
+        </div>
+        <div>
+          <h1>Synchro</h1>
+          <p>Shared Google Tasks, Location Routines & AI Daily Planner</p>
+        </div>
+      </div>
+
+      <div class="login-section">
+        <label class="section-label">Select Authorized Account to Sign In</label>
+        <div class="account-cards">
+          <button type="button" class="account-login-btn raveman-theme" data-email="raveman@gmail.com">
+            <span class="avatar raveman-avatar">R</span>
+            <div class="account-meta">
+              <strong>raveman@gmail.com</strong>
+              <span>Primary Workspace & Personal Tasks</span>
+            </div>
+            <span class="login-arrow">&rarr;</span>
+          </button>
+
+          <button type="button" class="account-login-btn pkwieloch-theme" data-email="pkwieloch@gmail.com">
+            <span class="avatar pkwieloch-avatar">P</span>
+            <div class="account-meta">
+              <strong>pkwieloch@gmail.com</strong>
+              <span>Work & Shared Operations Tasks</span>
+            </div>
+            <span class="login-arrow">&rarr;</span>
+          </button>
+        </div>
+
+        <div class="divider"><span>or enter authorized email</span></div>
+        <form id="custom-login-form" class="custom-login-form">
+          <input type="email" id="custom-login-input" placeholder="e.g. raveman@gmail.com" required />
+          <button type="submit" class="btn btn-primary">Continue</button>
+        </form>
+        <p id="login-error" class="error-msg hidden"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN APPLICATION -->
+  <div class="app-shell">
+    <!-- TOP HEADER BAR -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="brand-logo-sm">
+          <img src="./synchro-icon.png" alt="Synchro" class="brand-icon-img" />
+        </div>
+        <div>
+          <div class="app-title-row">
+            <span class="app-title">Synchro</span>
+            <span class="collab-pill" title="Both authorized logins view and edit this live plan together">
+              <span class="live-dot"></span> Shared
+            </span>
+          </div>
+          <p class="app-subtitle" id="current-date-label">Loading date...</p>
+        </div>
+      </div>
+
+      <!-- LOCATION SWITCHER (UK / POLAND), SUNRISE/SUNSET & STATS -->
+      <div class="topbar-center">
+        <div class="location-switcher" role="group" aria-label="Select Current Location">
+          <button type="button" class="loc-btn active" data-location="UK" title="Show UK everyday tasks & sunrise/sunset">
+            🇬🇧 UK
+          </button>
+          <button type="button" class="loc-btn" data-location="Poland" title="Show Poland everyday tasks & sunrise/sunset">
+            🇵🇱 Poland
+          </button>
+        </div>
+
+        <!-- SUNRISE & SUNSET PILL FOR SELECTED LOCATION -->
+        <div class="stat-pill sun-pill" title="Selected day's Sunrise & Sunset times for the active location">
+          <span class="sun-item">🌅 <strong id="sun-rise-label" class="mono">06:52</strong></span>
+          <span class="sun-sep">•</span>
+          <span class="sun-item">🌇 <strong id="sun-set-label" class="mono">16:36</strong></span>
+        </div>
+
+        <!-- PLAN DATE PICKER (TODAY / TOMORROW / ANY DATE) -->
+        <div class="stat-pill date-picker-pill" title="Select which day you are planning (Today, Tomorrow, or any future date)">
+          <button type="button" id="btn-date-today" class="btn-xs">Today</button>
+          <button type="button" id="btn-date-tomorrow" class="btn-xs">Tomorrow</button>
+          <input type="date" id="plan-date-input" class="time-inline-input" />
+        </div>
+
+        <div class="stat-pill">
+          <span class="stat-label">Start</span>
+          <input type="time" id="day-start-input" value="09:00" class="time-inline-input" title="Set when your daily schedule begins" />
+          <button type="button" id="btn-start-now" class="btn-xs" title="Shift schedule start time to right now">Now</button>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Planned</span>
+          <strong id="stat-planned-time" class="mono">0h 00m</strong>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Finish</span>
+          <strong id="stat-finish-time" class="mono">09:00 AM</strong>
+        </div>
+
+        <!-- 3-SIZE BOX DENSITY SLIDER -->
+        <div class="stat-pill density-pill" title="Adjust task box size (1 = Compact, 2 = Medium, 3 = Comfortable)">
+          <span class="stat-label">Box Size</span>
+          <input type="range" id="card-density-slider" min="1" max="3" step="1" value="2" class="density-slider" />
+          <span id="card-density-label" class="mono" style="font-size:11px;font-weight:600;min-width:18px;">M</span>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <button type="button" id="btn-theme-toggle" class="btn btn-secondary btn-sm" title="Switch between Light and Dark theme">
+          <span id="theme-icon">🌙</span>
+          <span id="theme-label">Dark</span>
+        </button>
+
+        <button type="button" id="btn-sync-google" class="btn btn-secondary btn-sm" title="Sync tasks with Google Tasks for both accounts">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+            <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+          </svg>
+          <span>Sync</span>
+        </button>
+
+        <button type="button" id="btn-open-settings" class="btn btn-ghost btn-sm" title="Configure Google OAuth & Gemini AI API Keys">
+          ⚙️ Setup
+        </button>
+
+        <div class="user-switcher" id="user-switcher" title="Switch active user view or sign out">
+          <span class="avatar-sm" id="active-user-avatar">R</span>
+          <strong id="active-user-email" style="font-size:11.5px;">raveman@gmail.com</strong>
+          <button type="button" id="btn-switch-user" class="btn-xs">Switch</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- RESIZABLE WORKSPACE CONTAINER -->
+    <div class="resizable-layout" id="resizable-layout">
+      <!-- TOP PART: GOOGLE TASKS INBOX DRAWER (BOTH ACCOUNTS) -->
+      <section class="top-pool-section" id="top-pool-section">
+        <div class="section-header">
+          <div class="section-title-group">
+            <h2>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              Google Tasks to Add
+            </h2>
+            <span class="section-hint">Drag down to plan &bull; Drag back here for later</span>
+          </div>
+
+          <div class="pool-controls">
+            <div class="account-filter-tabs" role="tablist">
+              <button type="button" class="filter-tab active" data-filter="all">
+                All <span class="badge-count" id="count-pool-all">0</span>
+              </button>
+              <button type="button" class="filter-tab" data-filter="raveman@gmail.com">
+                <span class="dot raveman-dot"></span> raveman <span class="badge-count" id="count-pool-raveman">0</span>
+              </button>
+              <button type="button" class="filter-tab" data-filter="pkwieloch@gmail.com">
+                <span class="dot pkwieloch-dot"></span> pkwieloch <span class="badge-count" id="count-pool-pkwieloch">0</span>
+              </button>
+            </div>
+
+            <!-- 1-CLICK LIVE GOOGLE CONNECT BUTTONS -->
+            <button type="button" id="btn-top-connect-raveman" class="btn-xs" title="1-Click Connect & Sync raveman@gmail.com Google Tasks & Calendar">
+              🔗 Connect raveman
+            </button>
+            <button type="button" id="btn-top-connect-pkwieloch" class="btn-xs" title="1-Click Connect & Sync pkwieloch@gmail.com Google Tasks & Calendar">
+              🔗 Connect pkwieloch
+            </button>
+
+            <!-- FOLDER / TASK LIST PICKER FOR SELECTED ACCOUNT -->
+            <div class="folder-picker-wrap">
+              <span class="folder-icon">📁</span>
+              <select id="folder-filter-select" class="folder-select" title="Filter tasks by Google Tasks Folder / List">
+                <option value="all">All Folders</option>
+              </select>
+            </div>
+
+            <label class="toggle-completed-label">
+              <input type="checkbox" id="show-completed-toggle" checked />
+              <span>Done</span>
+            </label>
+
+            <button type="button" id="btn-new-task" class="btn btn-primary btn-sm">
+              + New Task
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Folder Pill Strip -->
+        <div id="folder-chips-bar" class="folder-chips-bar"></div>
+
+        <!-- Scrollable Resizable Drop Zone for Pool -->
+        <div id="dropzone-pool" class="pool-grid dropzone" data-placement="pool">
+          <!-- Populated dynamically by app.js -->
+        </div>
+      </section>
+
+      <!-- HORIZONTAL RESIZE SPLITTER (TOP POOL vs BOTTOM COLUMNS) -->
+      <div class="splitter-horizontal" id="splitter-horizontal" title="Drag up or down to resize Google Tasks window vs Daily Plan">
+        <div class="splitter-grip-h"></div>
+      </div>
+
+      <!-- BOTTOM PART: TWO-COLUMN PLANNING WORKSPACE WITH VERTICAL SPLITTER -->
+      <main class="planning-workspace" id="planning-workspace">
+        <!-- LEFT COLUMN: DAILY EVERYDAY TASKS & ROUTINES (LOCATION-AWARE: UK / POLAND) -->
+        <section class="plan-column everyday-column" id="everyday-column">
+          <div class="column-header">
+            <div>
+              <div class="column-title-row">
+                <h3>Daily Everyday Tasks</h3>
+                <span class="location-badge-pill" id="everyday-location-badge">🇬🇧 UK</span>
+              </div>
+              <p class="column-subtitle">Click duration to adjust time &bull; Drag or click <strong>+</strong> to drop into today's plan</p>
+            </div>
+            <button type="button" id="btn-new-routine" class="btn btn-secondary btn-sm">
+              + Routine
+            </button>
+          </div>
+
+          <div id="everyday-templates-list" class="everyday-list">
+            <!-- Populated dynamically based on UK / Poland location -->
+          </div>
+        </section>
+
+        <!-- VERTICAL RESIZE SPLITTER (LEFT ROUTINES vs RIGHT ACTIVE PLAN) -->
+        <div class="splitter-vertical" id="splitter-vertical" title="Drag left or right to resize Everyday Tasks vs Active Daily Plan">
+          <div class="splitter-grip-v"></div>
+        </div>
+
+        <!-- RIGHT COLUMN: ACTIVE DAILY PLAN, TIME RESERVATIONS & CALENDAR SYNC -->
+        <section class="plan-column daily-plan-column" id="daily-plan-column">
+          <div class="column-header">
+            <div>
+              <div class="column-title-row">
+                <h3>Active Daily Plan</h3>
+                <span class="badge-count" id="count-daily-plan">0</span>
+              </div>
+              <p class="column-subtitle">Click any item to expand & reserve time &bull; Drag to rearrange</p>
+            </div>
+
+            <!-- Quick Break Insertion Bar -->
+            <div class="break-quick-bar">
+              <button type="button" class="btn-break-chip" data-break-title="☕ Coffee Break" data-break-mins="15">
+                ☕ +15m
+              </button>
+              <button type="button" class="btn-break-chip" data-break-title="🥗 Lunch Break" data-break-mins="45">
+                🥗 +45m
+              </button>
+              <button type="button" class="btn-break-chip" data-break-title="⚡ Buffer" data-break-mins="20">
+                ⚡ +20m
+              </button>
+            </div>
+          </div>
+
+          <!-- ADD TO CALENDAR BAR (RAVEMAN / PKWIELOCH / BOTH) -->
+          <div class="calendar-sync-bar">
+            <div class="calendar-sync-left">
+              <span class="calendar-icon">📅</span>
+              <div>
+                <strong>Add Plan to Calendar</strong>
+                <span class="calendar-subtext" id="last-calendar-export-label">raveman, pkwieloch, or both</span>
+              </div>
+            </div>
+            <div class="calendar-sync-controls">
+              <select id="calendar-target-select" class="calendar-select">
+                <option value="both">Both (raveman & pkwieloch)</option>
+                <option value="raveman@gmail.com">raveman@gmail.com</option>
+                <option value="pkwieloch@gmail.com">pkwieloch@gmail.com</option>
+              </select>
+              <button type="button" id="btn-export-calendar" class="btn btn-primary btn-sm">
+                Add to Calendar
+              </button>
+            </div>
+          </div>
+
+          <!-- Capacity Progress Bar -->
+          <div class="capacity-meter">
+            <div class="capacity-labels">
+              <span>Reserved: <strong id="daily-reserved-label" class="mono">0h 00m</strong> / 8h</span>
+              <span id="daily-schedule-span" class="mono">09:00 AM – 09:00 AM</span>
+            </div>
+            <div class="capacity-track">
+              <div id="capacity-fill-tasks" class="capacity-fill-tasks" style="width: 0%"></div>
+              <div id="capacity-fill-routines" class="capacity-fill-routines" style="width: 0%"></div>
+              <div id="capacity-fill-breaks" class="capacity-fill-breaks" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div id="dropzone-daily" class="plan-list timeline-list dropzone" data-placement="daily_plan">
+            <!-- Populated dynamically with auto-calculated start/end timestamps -->
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- MODAL: CREATE NEW GOOGLE TASK -->
+  <div id="new-task-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Create New Google Task</h3>
+        <button type="button" class="btn-close" id="close-new-task-modal">&times;</button>
+      </div>
+      <form id="new-task-form">
+        <div class="form-row-2">
+          <div class="form-group">
+            <label>Google Account</label>
+            <select id="new-task-account" required>
+              <option value="raveman@gmail.com">raveman@gmail.com</option>
+              <option value="pkwieloch@gmail.com">pkwieloch@gmail.com</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Destination</label>
+            <select id="new-task-placement">
+              <option value="pool">Google Tasks Pool (Top)</option>
+              <option value="daily_plan">Active Daily Plan</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Google Tasks Folder / List</label>
+          <input type="text" id="new-task-folder" list="existing-folders-datalist" placeholder="e.g., Work & Architecture, Client Projects, Personal" value="My Tasks" />
+          <datalist id="existing-folders-datalist"></datalist>
+        </div>
+
+        <div class="form-group">
+          <label>Task Title</label>
+          <input type="text" id="new-task-title" placeholder="e.g., Prepare Q4 presentation slides" required />
+        </div>
+
+        <div class="form-group">
+          <label>Task Description / Notes</label>
+          <textarea id="new-task-notes" rows="2" placeholder="Add context so AI can estimate duration..."></textarea>
+        </div>
+
+        <div class="ai-preview-box" id="new-task-ai-box">
+          <div class="ai-preview-header">
+            <span class="ai-sparkle">✨ AI Time Suggestion</span>
+            <button type="button" id="btn-preview-ai-estimate" class="btn-xs">Analyze with AI</button>
+          </div>
+          <p id="new-task-ai-text">Type a task title & description above — AI will automatically suggest a duration.</p>
+          <div class="form-group-inline">
+            <label>Reserve Duration (mins):</label>
+            <input type="number" id="new-task-duration" value="30" min="5" max="240" step="5" class="mono-input" />
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="cancel-new-task">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CREATE NEW EVERYDAY ROUTINE (UK / POLAND / BOTH) -->
+  <div id="new-routine-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Add Everyday Task / Routine</h3>
+        <button type="button" class="btn-close" id="close-new-routine-modal">&times;</button>
+      </div>
+      <form id="new-routine-form">
+        <div class="form-row-2">
+          <div class="form-group">
+            <label>Location Availability</label>
+            <select id="routine-location" required>
+              <option value="both">🌍 Both (UK & Poland)</option>
+              <option value="UK">🇬🇧 UK Only</option>
+              <option value="Poland">🇵🇱 Poland Only</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Emoji & Default Time (mins)</label>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="routine-icon" value="🏋️" style="width:56px;text-align:center;" maxlength="4" />
+              <input type="number" id="routine-duration" value="45" min="5" max="240" step="5" class="mono-input" style="flex:1;" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Everyday Task Name</label>
+          <input type="text" id="routine-title" placeholder="e.g., Gym, Bath, Coffee, Sauna" required />
+        </div>
+
+        <div class="form-group">
+          <label>Notes (optional)</label>
+          <textarea id="routine-notes" rows="2" placeholder="Optional details..."></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="cancel-new-routine">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Everyday Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CALENDAR EXPORT CONFIRMATION & LINKS -->
+  <div id="calendar-modal" class="modal-backdrop hidden">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3>📅 Daily Schedule Added to Calendar</h3>
+        <button type="button" class="btn-close" id="close-calendar-modal">&times;</button>
+      </div>
+      <div id="calendar-modal-body" class="calendar-modal-body">
+        <!-- Populated dynamically -->
+      </div>
+      <div class="modal-footer spread">
+        <button type="button" id="btn-download-ics" class="btn btn-secondary">
+          ⬇️ Download .ics Calendar File
+        </button>
+        <button type="button" id="done-calendar-modal" class="btn btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: GOOGLE OAUTH & GEMINI AI CONFIGURATION -->
+  <div id="settings-modal" class="modal-backdrop hidden">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3>Google Tasks, Calendar OAuth & Gemini AI Setup</h3>
+        <button type="button" class="btn-close" id="close-settings-modal">&times;</button>
+      </div>
+      <form id="settings-form">
+        <div class="settings-banner">
+          <strong>Easy 10-Second Google Connect (No Google Cloud Console Setup Required!):</strong>
+          If Google Cloud Console gives an <code>origin_mismatch</code> error, click the button below to generate a token in Google's official OAuth Playground in 2 clicks:
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <a href="https://developers.google.com/oauthplayground/#step1&apisSelect=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Ftasks%2Chttps%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcalendar.events&url=https%3A%2F%2F&content_type=application%2Fjson&http_method=GET&useDefaultOauthCred=unchecked" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="text-decoration:none;">
+              ⚡ Open 1-Click Token Generator (Google OAuth Playground) ↗
+            </a>
+            <span style="font-size:11px;color:var(--text-muted);">1. Click "Authorize APIs" &rarr; 2. Click "Exchange authorization code for tokens" &rarr; 3. Copy the <code>ya29...</code> Access Token below!</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Gemini API Key (Optional — enables live Gemini 2.0 Flash duration analysis)</label>
+          <input type="password" id="setting-gemini-key" placeholder="AIzaSy... (leave blank to use built-in Smart AI Estimator)" />
+        </div>
+
+        <div class="form-group">
+          <label>Google Cloud OAuth Client ID (For 1-Click Browser Popup Connect)</label>
+          <input type="text" id="setting-google-client-id" placeholder="xxxx-xxxx.apps.googleusercontent.com" />
+          <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+            <button type="button" id="btn-oauth-raveman" class="btn btn-secondary btn-sm">
+              🔗 1-Click Connect raveman@gmail.com
+            </button>
+            <button type="button" id="btn-oauth-pkwieloch" class="btn btn-secondary btn-sm">
+              🔗 1-Click Connect pkwieloch@gmail.com
+            </button>
+          </div>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label>
+              <span class="dot raveman-dot"></span>
+              <code>raveman@gmail.com</code> OAuth Token <span id="status-raveman-token" class="mono" style="font-size:10.5px;"></span>
+            </label>
+            <input type="password" id="setting-token-raveman" placeholder="Auto-filled by 1-Click Connect or paste ya29.a0..." />
+          </div>
+          <div class="form-group">
+            <label>
+              <span class="dot pkwieloch-dot"></span>
+              <code>pkwieloch@gmail.com</code> OAuth Token <span id="status-pkwieloch-token" class="mono" style="font-size:10.5px;"></span>
+            </label>
+            <input type="password" id="setting-token-pkwieloch" placeholder="Auto-filled by 1-Click Connect or paste ya29.a0..." />
+          </div>
+        </div>
+
+        <div class="modal-footer spread">
+          <button type="button" id="btn-reset-demo" class="btn btn-ghost">Reset Demo Data</button>
+          <div class="footer-right">
+            <button type="button" class="btn btn-ghost" id="cancel-settings">Close</button>
+            <button type="submit" class="btn btn-primary">Save Settings</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
